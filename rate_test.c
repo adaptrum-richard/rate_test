@@ -14,7 +14,7 @@
 #include <sys/time.h>
 #include <sys/ioctl.h>
 #include <pthread.h>
-#define TOTAL_TIME (10*1000*1000) 
+#define TOTAL_TIME (5*1000*1000) 
 //#define TEST
 struct parameters
 {
@@ -131,6 +131,7 @@ static void *tx(void *data)
     long start = 0;
     unsigned long count = 0;
     sleep_us(10000);
+    long total_pkts = 0;
 #ifdef TEST
     for(int j = 0; j < 10; j++)
 #else
@@ -147,6 +148,7 @@ static void *tx(void *data)
         //send packet
         n = sendto(parameters->sock, sendbuf, 14 + parameters->packet_len, 0, (struct sockaddr *)&client, sizeof(client));
         count += n;
+        total_pkts++;
         // calc rate
         if (start == 0)
             start = get_usec();
@@ -158,9 +160,11 @@ static void *tx(void *data)
                 printf("tx info:\n");
                 printf("\ttx bytes:\t%lu\n\ttx times:\t%ld us\n", count, t);
                 printf("\ttx rate:\t%lu Mbps\n", (8 * count) / 1024 / 1024 / (t/1000/1000));
-                printf("\ttx pkt sn:\t%lu\n\n", next);
+                printf("\ttx pkt sn:\t%lu\n", next);
+                printf("\ttx pkts:\t%ld\n\n", total_pkts);
                 start = 0;
                 count = 0;
+                total_pkts = 0;
             }
         }
 #ifdef TEST
@@ -201,6 +205,7 @@ static void *rx(void *data)
     int n;
     long start = 0;
     long count = 0;
+    long tatal_pkt = 0;
     while (1)
     {
         memset(rxbuff, 0x00, 4096);
@@ -209,6 +214,7 @@ static void *rx(void *data)
             continue;
         if (client.sll_protocol == type)
         {
+            tatal_pkt++;
             count += n;
             memcpy((char *)&pkt_num, p, sizeof(unsigned long));
 #ifdef TEST
@@ -238,11 +244,14 @@ static void *rx(void *data)
                     unsigned long rate = (8 * count) / 1024 / 1024 / (t/1000/1000);
                     printf("\trx rate:\t%lu Mbps\n", rate);
                     printf("\trx pkt sn:\t%lu\n", pkt_num);
-                    float packet_loss = (1.0*lost_pkt_count)/(1.0*pkt_num);
-                    printf("\tpacket loss:\t%2.f%%\n", packet_loss*100);
+                    float packet_loss = (1.0*lost_pkt_count)/(1.0*tatal_pkt+lost_pkt_count*1.0);
+                    printf("\tpacket loss:\t%.5f%%\n", packet_loss*100);
+                    printf("\trx pkts:\t%ld\n", tatal_pkt);
                     printf("\trx_rate/(1-packet_lost):\t%2.f Mbps\n\n", (1.0*rate)/(1.0 - packet_loss));
                     start = 0;
                     count = 0;
+                    lost_pkt_count = 0;
+                    tatal_pkt = 0;
                 }
             }
         }
